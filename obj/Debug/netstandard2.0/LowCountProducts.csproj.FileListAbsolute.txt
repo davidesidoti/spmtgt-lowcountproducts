@@ -1,0 +1,6 @@
+E:\GitHubProjects\LowCountProducts\LowCountProducts\obj\Debug\netstandard2.0\LowCountProducts.csproj.AssemblyReference.cache
+E:\GitHubProjects\LowCountProducts\LowCountProducts\obj\Debug\netstandard2.0\MyPluginInfo.cs
+E:\GitHubProjects\LowCountProducts\LowCountProducts\obj\Debug\netstandard2.0\LowCountProducts.GeneratedMSBuildEditorConfig.editorconfig
+E:\GitHubProjects\LowCountProducts\LowCountProducts\obj\Debug\netstandard2.0\LowCountProducts.AssemblyInfoInputs.cache
+E:\GitHubProjects\LowCountProducts\LowCountProducts\obj\Debug\netstandard2.0\LowCountProducts.AssemblyInfo.cs
+E:\GitHubProjects\LowCountProducts\LowCountProducts\obj\Debug\netstandard2.0\LowCountProducts.csproj.CoreCompileInputs.cache
