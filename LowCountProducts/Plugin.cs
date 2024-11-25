@@ -7,13 +7,14 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
+using HutongGames.PlayMaker.Actions;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
 namespace LowCountProducts
 {
-    [BepInPlugin("SupermarketTogether.plugins.lowcountproducts", "LowCountProducts", "0.0.2")]
+    [BepInPlugin("SupermarketTogether.plugins.lowcountproducts", "LowCountProducts", "0.2")]
     public class Plugin : BaseUnityPlugin
     {
         internal static new ManualLogSource Logger;
@@ -22,7 +23,7 @@ namespace LowCountProducts
         // ==== Plugin info
         private const string PluginGuid = "SupermarketTogether.plugins.lowcountproducts";
         private const string PluginName = "LowCountProducts";
-        private const string PluginVersion = "0.0.2";
+        private const string PluginVersion = "0.2";
         
         // ==== Keyboard shortcut
         public static string KeyboardShortcutLowCountProductsKey = "LowCountProducts Toggle";
@@ -39,6 +40,8 @@ namespace LowCountProducts
         public static ManualLogSource Log = new ManualLogSource("LowCountProducts");
         public static bool LowCountProducts = true;
         public static bool AddLowCountProducts = false;
+        public static string LowCountProductsThresholdKey = "LowCountProducts Threshold";
+        public static ConfigEntry<int> LowCountProductsThreshold;
 
         private void Awake()
         {
@@ -46,6 +49,7 @@ namespace LowCountProducts
             
             KeyboardShortcutLowCountProducts = ((BaseUnityPlugin)this).Config.Bind<KeyboardShortcut>("General", KeyboardShortcutLowCountProductsKey, new KeyboardShortcut((KeyCode)98, Array.Empty<KeyCode>()), (ConfigDescription)null);
             KeyboardShortcutAddLowCountProducts = ((BaseUnityPlugin)this).Config.Bind<KeyboardShortcut>("General", KeyboardShortcutAddLowCountProductsKey, new KeyboardShortcut((KeyCode)98, (KeyCode[])(object)new KeyCode[1] { (KeyCode)306 }), (ConfigDescription)null);
+            LowCountProductsThreshold = ((BaseUnityPlugin)this).Config.Bind<int>("General", LowCountProductsThresholdKey, 10, (ConfigDescription)null);
             
             // Plugin startup logic
             Logger = base.Logger;
@@ -69,7 +73,6 @@ namespace LowCountProducts
             {
                 if (!AddLowCountProducts)
                 {
-                    // Logger.LogInfo($"{PluginName}: Adding low count products to cart.");
                     AddLowCountProducts = true;
                 }
             }
@@ -86,56 +89,157 @@ namespace LowCountProducts.Patches
         [HarmonyPostfix]
         public static void LowCountProductsPostfix(ManagerBlackboard __instance)
         {
-            if (LowCountProducts.Plugin.AddLowCountProducts)
+            if (Plugin.LowCountProducts)
             {
-                LowCountProducts.Plugin.AddLowCountProducts = false;
-
-                Dictionary<int, Dictionary<string, object>> lowProductList = new Dictionary<int, Dictionary<string, object>>();
-
-                ProductListing productListing = __instance.GetComponent<ProductListing>();
-                if (productListing == null)
+                // === start: ADD LOW COUNT BUTTON
+                GameObject buttonsBar = GameObject.Find("Buttons_Bar");
+                if (buttonsBar.transform.Find("AddLowCountProductsButton") == null)
                 {
-                    LowCountProducts.Plugin.Logger.LogError("ProductListing component not found on ManagerBlackboard.");
-                    return;
-                }
-
-                // Iterate over unlocked products
-                foreach (int productID in productListing.availableProducts)
-                {
-                    GameObject productPrefab = productListing.productPrefabs[productID];
-                    if (productPrefab != null)
+                    if (buttonsBar != null)
                     {
-                        int[] quantities = GetProductsExistences(__instance, productID);
-
-                        int shelvesQuantity = quantities[0];
-                        int storageQuantity = quantities[1];
-                        int boxesQuantity = quantities[2];
-
-                        if (shelvesQuantity <= 10 && storageQuantity == 0 && boxesQuantity == 0)
+                        GameObject existingButton = buttonsBar.transform.Find("Button_Supermarket")?.gameObject;
+                        if (existingButton != null)
                         {
-                            if (!lowProductList.ContainsKey(productID))
+                            // Clone existing button
+                            GameObject newButton = GameObject.Instantiate(existingButton, buttonsBar.transform);
+                            newButton.name = "AddLowCountProductsButton";
+                            
+                            // Remove the PlayMakerFSM component to prevent old event listeners
+                            PlayMakerFSM fsm = newButton.GetComponent<PlayMakerFSM>();
+                            if (fsm != null)
                             {
-                                string price = GetProductPrice(__instance, productListing, productID);
-                                Dictionary<string, object> productInfo = new Dictionary<string, object>
+                                UnityEngine.Object.Destroy(fsm);
+                            }
+                            
+                            // Adjust the button's position (optional)
+                            RectTransform rectTransform = newButton.GetComponent<RectTransform>();
+                            rectTransform.anchoredPosition += new Vector2(560, 0);
+                            
+                            // Change the button's text
+                            GameObject newButtonTextObj = newButton.transform.Find("Supermarket_Text").gameObject;
+                            newButtonTextObj.name = "AddLowCountProductsText";
+                            TextMeshProUGUI newButtonText = newButtonTextObj.GetComponent<TextMeshProUGUI>();
+                            if (newButtonText != null)
+                            {
+                                // Remove the SetLocalizationString component
+                                SetLocalizationString localizationComponent = newButtonTextObj.GetComponent<SetLocalizationString>();
+                                if (localizationComponent != null)
                                 {
-                                    { "ID", productID },
-                                    { "price", price }
-                                };
+                                    UnityEngine.Object.Destroy(localizationComponent);
+                                }
 
-                                lowProductList[productID] = productInfo;
+                                newButtonText.text = "Add Low Count Products";
+                            }
+                            
+                            // Remove existing onClick listeners
+                            Button buttonComponent = newButton.GetComponent<Button>();
+                            buttonComponent.onClick.RemoveAllListeners();
+                            
+                            // Add new onClick listener
+                            buttonComponent.onClick.AddListener(() =>
+                            {
+                                if (!Plugin.AddLowCountProducts)
+                                {
+                                    // Plugin.Logger.LogInfo("Added low count products to cart via button.");
+                                    Plugin.AddLowCountProducts = true;
+                                }
+                            });
+                        }
+                        else
+                        {
+                            Plugin.Logger.LogError("Existing button not found to clone.");
+                        }
+                    }
+                    else
+                    {
+                        Plugin.Logger.LogError("Buttons_Bar not found in ManagerBlackboard.");
+                    }
+                }
+                // === end: ADD LOW COUNT BUTTON
+                
+                if (Plugin.AddLowCountProducts)
+                {
+                    // Explore the Buttons_Bar GameObject
+                    // ExploreGameObject(buttonsBar);
+                    
+                    Plugin.AddLowCountProducts = false;
+
+                    Dictionary<int, Dictionary<string, object>> lowProductList = new Dictionary<int, Dictionary<string, object>>();
+
+                    ProductListing productListing = __instance.GetComponent<ProductListing>();
+                    if (productListing == null)
+                    {
+                        Plugin.Logger.LogError("ProductListing component not found on ManagerBlackboard.");
+                        return;
+                    }
+
+                    // Iterate over unlocked products
+                    foreach (int productID in productListing.availableProducts)
+                    {
+                        GameObject productPrefab = productListing.productPrefabs[productID];
+                        if (productPrefab != null)
+                        {
+                            int[] quantities = GetProductsExistences(__instance, productID);
+
+                            int shelvesQuantity = quantities[0];
+                            int storageQuantity = quantities[1];
+                            int boxesQuantity = quantities[2];
+
+                            if (shelvesQuantity <= Plugin.LowCountProductsThreshold.Value && storageQuantity == 0 && boxesQuantity == 0)
+                            {
+                                if (!lowProductList.ContainsKey(productID))
+                                {
+                                    string price = GetProductPrice(__instance, productListing, productID);
+                                    Dictionary<string, object> productInfo = new Dictionary<string, object>
+                                    {
+                                        { "ID", productID },
+                                        { "price", price }
+                                    };
+
+                                    lowProductList[productID] = productInfo;
+                                }
                             }
                         }
                     }
+
+                    // Add low count products to cart
+                    AddProductsToCart(__instance, lowProductList);
+
+                    if (lowProductList.Count > 0)
+                    {
+                        Plugin.NotificationType = "lowCountAddToCart";
+                        Plugin.Notify = true;
+                    }
                 }
-
-                // Add low count products to cart
-                AddProductsToCart(__instance, lowProductList);
-
-                if (lowProductList.Count > 0)
+            }
+            else
+            {
+                // Remove button from ui if mod is disabled
+                GameObject buttonsBar = GameObject.Find("Buttons_Bar");
+                if (buttonsBar.transform.Find("AddLowCountProductsButton") != null)
                 {
-                    LowCountProducts.Plugin.NotificationType = "lowCountAddToCart";
-                    LowCountProducts.Plugin.Notify = true;
+                    GameObject addLowCountProductsButton = buttonsBar.transform.Find("AddLowCountProductsButton").gameObject;
+                    UnityEngine.Object.Destroy(addLowCountProductsButton);
                 }
+            }
+        }
+
+        public static void ExploreGameObject(GameObject obj, string indent = "")
+        {
+            // Log the name of the GameObject
+            Plugin.Logger.LogInfo($"{indent}GameObject: {obj.name}");
+    
+            // Log each component attached to the GameObject
+            Component[] components = obj.GetComponents<Component>();
+            foreach (Component comp in components)
+            {
+                Plugin.Logger.LogInfo($"{indent} - Component: {comp.GetType().Name}");
+            }
+
+            // Recursively explore each child GameObject
+            foreach (Transform child in obj.transform)
+            {
+                ExploreGameObject(child.gameObject, indent + "  ");
             }
         }
         
@@ -150,7 +254,7 @@ namespace LowCountProducts.Patches
             }
             else
             {
-                LowCountProducts.Plugin.Logger.LogError("Could not find method GetProductsExistences");
+                Plugin.Logger.LogError("Could not find method GetProductsExistences");
                 return new int[3];
             }
         }
@@ -217,15 +321,15 @@ namespace LowCountProducts.Patches
         [HarmonyPostfix]
         public static void NotificationHandler_Postfix(GameCanvas __instance, ref bool ___inCooldown)
         {
-            if (LowCountProducts.Plugin.Notify)
+            if (Plugin.Notify)
             {
                 ___inCooldown = false;
-                LowCountProducts.Plugin.Notify = false;
+                Plugin.Notify = false;
                 string text = "`";
-                switch (LowCountProducts.Plugin.NotificationType)
+                switch (Plugin.NotificationType)
                 {
                     case "lowCountToggle":
-                        text = text + "Low Count Products: " + (LowCountProducts.Plugin.LowCountProducts ? "ON" : "OFF");
+                        text = text + "Low Count Products: " + (Plugin.LowCountProducts ? "ON" : "OFF");
                         break;
                     case "lowCountAddToCart":
                         text = text + "Low Count Products: Added almost out of stock products to cart.";
